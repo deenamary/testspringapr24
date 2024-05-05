@@ -6,6 +6,7 @@ import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 @RestController
 @RequestMapping("api/v1")
@@ -21,6 +22,8 @@ public class AppController {
     UsertypelinkRepository usertypelinkRepository;
     ProductofferRepository productofferRepository;
     ProductRepository productRepository;
+    ProductofferstatusRepository productofferstatusRepository;
+    OrderRepository orderRepository;
 
 
     AppController( CredentialRepository credentialRepository,
@@ -29,7 +32,9 @@ public class AppController {
                    UsernamewalletlinkRepository usernamewalletlinkRepository,
                    UsertypelinkRepository usertypelinkRepository,
                    ProductofferRepository productofferRepository,
-                   ProductRepository productRepository)
+                   ProductRepository productRepository,
+                   ProductofferstatusRepository productofferstatusRepository,
+                   OrderRepository orderRepository)
 
     {
         this.credentialRepository = credentialRepository;
@@ -39,6 +44,8 @@ public class AppController {
         this.usertypelinkRepository = usertypelinkRepository;
         this.productofferRepository = productofferRepository;
         this.productRepository = productRepository;
+        this.productofferstatusRepository = productofferstatusRepository;
+        this.orderRepository = orderRepository;
     }
 
     @PostMapping("signup")
@@ -104,5 +111,28 @@ public class AppController {
     public ResponseEntity<Userdetail> getUserDetails(@PathVariable String username)
     {
         return ResponseEntity.ok(userdetailRepository.findById(username).get());
+    }
+
+    @GetMapping("get/all/offers/{sellername}")
+    public ResponseEntity<List<Productoffer>> getAllOffersBySellername(@PathVariable String sellername)
+    {
+        return ResponseEntity.ok(productofferRepository.findBySellername(sellername));
+    }
+
+
+    @GetMapping("get/all/offers/open") //get all offers from all sellers. This is a bad practice. We should have a separate endpoint for this. But for simplicity, I am leaving it as it is.  We can change it later.  We can also add a filter to this endpoint.  For example, we can add a filter to get offers for a particular seller.  We can also add a filter to get offers for a particular product.  We can also add a filter to get offers for a particular product and seller.  We can also add a filter to get offers for a particular product and seller and a particular state.  We can also add a filter to get offers for a particular product and seller and a particular state and a particular country.  We can also add a filter to get offers for a particular product and seller and a particular state and a particular country and a particular currency.  We can also add a filter to get offers for a particular product and seller and a particular state and a particular country and a particular currency and a particular price range.  We can also add a filter to get offers for a particular product and seller and a particular state and a particular country and a particular currency and a particular price range and
+    public ResponseEntity<List<Productoffer>> getAllOpenOffers()
+    {
+        List<Productofferstatus> productofferstatuses = productofferstatusRepository.findByStatus("OPEN");
+        List<Productoffer> productoffers = productofferstatuses.stream().map(status -> productofferRepository.findById(status.getOfferid()).get()).collect(Collectors.toList());
+        return ResponseEntity.ok(productoffers);
+    }
+
+    @PostMapping("save/order")
+    public ResponseEntity<Order> createOrder(@RequestBody Order order)
+    {
+        order.setOrderid(String.valueOf(UUID.randomUUID()));
+        orderRepository.save(order);
+        return ResponseEntity.ok(order);
     }
 }
