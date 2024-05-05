@@ -1,5 +1,6 @@
 package com.example.testspringapr24;
 
+import jakarta.transaction.Transactional;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -24,6 +25,8 @@ public class AppController {
     ProductRepository productRepository;
     ProductofferstatusRepository productofferstatusRepository;
     OrderRepository orderRepository;
+    OfferOrderViewService offerOrderViewService;
+    OrderstatusRepository orderstatusRepository;
 
 
     AppController( CredentialRepository credentialRepository,
@@ -34,7 +37,9 @@ public class AppController {
                    ProductofferRepository productofferRepository,
                    ProductRepository productRepository,
                    ProductofferstatusRepository productofferstatusRepository,
-                   OrderRepository orderRepository)
+                   OrderRepository orderRepository,
+                   OfferOrderViewService offerOrderViewService,
+                   OrderstatusRepository orderstatusRepository)
 
     {
         this.credentialRepository = credentialRepository;
@@ -46,6 +51,8 @@ public class AppController {
         this.productRepository = productRepository;
         this.productofferstatusRepository = productofferstatusRepository;
         this.orderRepository = orderRepository;
+        this.offerOrderViewService = offerOrderViewService;
+        this.orderstatusRepository = orderstatusRepository;
     }
 
     @PostMapping("signup")
@@ -128,11 +135,29 @@ public class AppController {
         return ResponseEntity.ok(productoffers);
     }
 
+    @Transactional
     @PostMapping("save/order")
-    public ResponseEntity<Order> createOrder(@RequestBody Order order)
+    public ResponseEntity<Order> createOrder(@RequestBody Order order,
+                                             Orderstatus orderstatus)
     {
         order.setOrderid(String.valueOf(UUID.randomUUID()));
         orderRepository.save(order);
+
+        orderstatus.setId(String.valueOf(UUID.randomUUID()));
+        orderstatus.setOrderid(order.getOrderid());
+        orderstatus.setStatus("OPEN");
+        orderstatusRepository.save(orderstatus);
+
         return ResponseEntity.ok(order);
+    }
+
+    @GetMapping("get/orders/{sellername}")
+    public ResponseEntity<List<OfferOrderView>> getOfferOrderViews(@PathVariable String sellername)
+    {
+        List<Productoffer> productoffers =  productofferRepository.findBySellername(sellername);
+        List<OfferOrderView> offerOrderViews = productoffers.stream().filter
+                (productoffer -> offerOrderViewService.createOfferOrderView(productoffer.getId(),new OfferOrderView()).isPresent())
+                .map(productoffer -> offerOrderViewService.createOfferOrderView(productoffer.getId(),new OfferOrderView()).get()).collect(Collectors.toList());
+        return ResponseEntity.ok(offerOrderViews);
     }
 }
