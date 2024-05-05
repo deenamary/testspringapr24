@@ -5,7 +5,9 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.time.Instant;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
@@ -27,7 +29,10 @@ public class AppController {
     OrderRepository orderRepository;
     OfferOrderViewService offerOrderViewService;
     OrderstatusRepository orderstatusRepository;
-
+    PaymentRepository paymentRepository;
+    PaymentwalletlinkRepository paymentwalletlinkRepository;
+    NegomessageRepository negomessageRepository;
+    PaymentxnRepository paymentxnRepository;
 
     AppController( CredentialRepository credentialRepository,
                    UserdetailRepository userdetailRepository,
@@ -39,7 +44,11 @@ public class AppController {
                    ProductofferstatusRepository productofferstatusRepository,
                    OrderRepository orderRepository,
                    OfferOrderViewService offerOrderViewService,
-                   OrderstatusRepository orderstatusRepository)
+                   OrderstatusRepository orderstatusRepository,
+                   PaymentRepository paymentRepository,
+                   PaymentwalletlinkRepository paymentwalletlinkRepository,
+                   NegomessageRepository negomessageRepository,
+                   PaymentxnRepository paymentxnRepository)
 
     {
         this.credentialRepository = credentialRepository;
@@ -53,6 +62,10 @@ public class AppController {
         this.orderRepository = orderRepository;
         this.offerOrderViewService = offerOrderViewService;
         this.orderstatusRepository = orderstatusRepository;
+        this.paymentRepository = paymentRepository;
+        this.paymentwalletlinkRepository = paymentwalletlinkRepository;
+        this.negomessageRepository = negomessageRepository;
+        this.paymentxnRepository = paymentxnRepository;
     }
 
     @PostMapping("signup")
@@ -159,5 +172,99 @@ public class AppController {
                 (productoffer -> offerOrderViewService.createOfferOrderView(productoffer.getId(),new OfferOrderView()).isPresent())
                 .map(productoffer -> offerOrderViewService.createOfferOrderView(productoffer.getId(),new OfferOrderView()).get()).collect(Collectors.toList());
         return ResponseEntity.ok(offerOrderViews);
+    }
+
+    @PostMapping("accept/order/{orderid}")
+    @Transactional
+    public ResponseEntity<String> acceptOrder(@PathVariable String orderid,
+                                              Payment payment,
+                                              Paymentwalletlink paymentwalletlink)
+    {
+        //UPDATE OFFER STATUS TO PROCESSING
+        Order order =  orderRepository.findById(orderid).get();
+        Productoffer productoffer = productofferRepository.findById(order.getOfferid()).get();
+        productofferstatusRepository.updateStatusByOfferid("PROCESSING",order.getOfferid());
+
+        //UPDATE ORDER STATUS TO ACCEPTED/REJECTED
+        orderstatusRepository.updateStatusByOrderid("ACCEPTED", orderid);
+
+        Optional<OfferOrderView> offerOrderView = offerOrderViewService.createOfferOrderView(order.getOfferid(), new OfferOrderView());
+        if(offerOrderView.isPresent())
+        {
+            List<Order> otherOrders =   offerOrderView.get().getOrders().stream().filter(orderEl -> !(orderEl.getOrderid().equals(orderid))).collect(Collectors.toList());
+            if(!otherOrders.isEmpty())
+            {
+                otherOrders.stream().forEach(order1 -> orderstatusRepository.updateStatusByOrderid("REJECTED",order1.getOrderid()));
+            }
+        }
+
+        //CREATE A PAYMENT WITH STATUS 'DUE'
+        String buyername = order.getBuyername();
+        String sellername = productoffer.getSellername();
+
+        paymentwalletlink.setLinkid(String.valueOf(UUID.randomUUID()));
+        paymentwalletlink.setPayerwallet(usernamewalletlinkRepository.findByUsername(buyername).getWalletid());
+        paymentwalletlink.setPayeewallet(usernamewalletlinkRepository.findByUsername(sellername).getWalletid());
+        paymentwalletlink.setEscrowwallet(usernamewalletlinkRepository.findByUsername("admin").getWalletid());
+        paymentwalletlink.setAmount(order.getBid());
+        paymentwalletlink.setPaymenttype("ORDER");
+
+        payment.setId(String.valueOf(UUID.randomUUID()));
+        payment.setOfferid(productoffer.getId());
+        payment.setOrderid(order.getOrderid());
+        payment.setStatus("DUE");
+        payment.setPaymentwalletlink(paymentwalletlink.getLinkid());
+
+        paymentwalletlink.setPaymentrefid(payment.getId());
+
+        paymentwalletlinkRepository.save(paymentwalletlink);
+        paymentRepository.save(payment);
+
+        return ResponseEntity.ok("Order Accepted");
+
+    }
+
+    @PostMapping("send/message")
+    public ResponseEntity<Negomessage> sendMessage(@RequestBody Negomessage negomessage)
+    {
+        negomessage.setId(String.valueOf(UUID.randomUUID()));
+        negomessage.setTime(Instant.now());
+        negomessageRepository.save(negomessage);
+        return ResponseEntity.ok(negomessage);
+    }
+
+    @PostMapping("make/payment/{orderid}")
+    @Transactional
+    public ResponseEntity<Paymentxn> makePayment(@PathVariable String orderid, Paymentxn paymentxn)
+    {
+
+        if(paymentRepository.findByOrderid(orderid).isPresent())
+        {
+            Payment payment = paymentRepository.findByOrderid(orderid).get();
+            Paymentwalletlink paymentwalletlink = paymentwalletlinkRepository.findById(payment.getPaymentwalletlink()).get();
+
+            //DEBIT THE AMOUNT FROM BUYER WALLET
+            Wallet buyerwallet = walletRepository.findById(paymentwalletlink.getPayerwallet()).get();
+            buyerwallet.setBalance(buyerwallet.getBalance() - paymentwalletlink.getAmount());
+
+            //CREDIT THE AMOUNT TO ESCROW WALLET
+            Wallet escrowwallet = walletRepository.findById(paymentwalletlink.getEscrowwallet()).get();
+            escrowwallet.setBalance(escrowwallet.getBalance() + paymentwalletlink.getAmount());
+
+            paymentxn.setTxnid(String.valueOf(UUID.randomUUID()));
+            paymentxn.setPymntrefid(orderid);
+            paymentxn.setPaymenttype("ORDER");
+            paymentxn.setTime(Instant.now());
+            paymentxn.setAmount(paymentwalletlink.getAmount());
+            paymentxn.setPayerwallet(paymentwalletlink.getPayerwallet());
+            paymentxn.setPayeewallet(paymentwalletlink.getEscrowwallet());
+            paymentxnRepository.save(paymentxn);
+
+            return ResponseEntity.ok(paymentxn);
+        }
+        else
+        {
+            return ResponseEntity.badRequest().body(null);
+        }
     }
 }
