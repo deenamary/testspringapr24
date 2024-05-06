@@ -1,5 +1,6 @@
 package com.example.testspringapr24;
 
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Scope;
@@ -8,6 +9,14 @@ import java.util.UUID;
 
 @Configuration
 public class AppConfig {
+
+    @Value("${admin.username}")
+    private String admin_username;
+
+    @Bean("admin_username")
+    public String getAdmin_username() {
+        return admin_username;
+    }
 
     @Bean("MyNumOne")
     @Scope("prototype")

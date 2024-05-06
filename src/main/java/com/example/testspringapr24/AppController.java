@@ -33,6 +33,7 @@ public class AppController {
     PaymentwalletlinkRepository paymentwalletlinkRepository;
     NegomessageRepository negomessageRepository;
     PaymentxnRepository paymentxnRepository;
+    String admin_username;
 
     AppController( CredentialRepository credentialRepository,
                    UserdetailRepository userdetailRepository,
@@ -48,7 +49,8 @@ public class AppController {
                    PaymentRepository paymentRepository,
                    PaymentwalletlinkRepository paymentwalletlinkRepository,
                    NegomessageRepository negomessageRepository,
-                   PaymentxnRepository paymentxnRepository)
+                   PaymentxnRepository paymentxnRepository,
+                   String admin_username)
 
     {
         this.credentialRepository = credentialRepository;
@@ -66,6 +68,7 @@ public class AppController {
         this.paymentwalletlinkRepository = paymentwalletlinkRepository;
         this.negomessageRepository = negomessageRepository;
         this.paymentxnRepository = paymentxnRepository;
+        this.admin_username = admin_username;
     }
 
     @PostMapping("signup")
@@ -114,10 +117,18 @@ public class AppController {
     }
 
     @PostMapping("save/product/offer")
-    public ResponseEntity<Productoffer> createOffer(@RequestBody Productoffer offer)
+    public ResponseEntity<Productoffer> createOffer(@RequestBody Productoffer offer,
+                                                    Productofferstatus productofferstatus)
     {
         offer.setId(String.valueOf(UUID.randomUUID()));
         productofferRepository.save(offer);
+
+
+        productofferstatus.setId(String.valueOf(UUID.randomUUID()));
+        productofferstatus.setOfferid(offer.getId());
+        productofferstatus.setStatus("OPEN");
+        productofferstatusRepository.save(productofferstatus);
+
         return ResponseEntity.ok(offer);
     }
 
@@ -205,7 +216,7 @@ public class AppController {
         paymentwalletlink.setLinkid(String.valueOf(UUID.randomUUID()));
         paymentwalletlink.setPayerwallet(usernamewalletlinkRepository.findByUsername(buyername).getWalletid());
         paymentwalletlink.setPayeewallet(usernamewalletlinkRepository.findByUsername(sellername).getWalletid());
-        paymentwalletlink.setEscrowwallet(usernamewalletlinkRepository.findByUsername("admin").getWalletid());
+        paymentwalletlink.setEscrowwallet(usernamewalletlinkRepository.findByUsername(admin_username).getWalletid());
         paymentwalletlink.setAmount(order.getBid());
         paymentwalletlink.setPaymenttype("ORDER");
 
